@@ -1,0 +1,163 @@
+#include <glad/glad.h>
+#include <GLFW/glfw3.h>
+#include <stdio.h>
+
+// --- Vertex Shader: Sada je kompleksniji ---
+// Pored pozicije, on će dobijati i informaciju o vremenu (u_Time)
+// da bi mogao da animira uglove kvadrata (efekat "disanja").
+const char* vertexShaderSource = "#version 330 core\n"
+    "layout (location = 0) in vec2 aPos;\n"
+    "uniform float u_Time;\n" // Uniform za vreme
+    "void main()\n"
+    "{\n"
+    // Skaliramo poziciju svakog ugla na osnovu sinusne funkcije vremena
+    // Ovo stvara efekat pulsiranja ili "disanja" celog kvadrata.
+    "   float scale = 1.0 + 0.05 * sin(u_Time * 2.0);\n"
+    "   gl_Position = vec4(aPos.xy * scale, 0.0, 1.0);\n"
+    "}\0";
+
+// --- Fragment Shader: Ovde se dešava magija ---
+// Ovaj šejder dobija tri ključne informacije od našeg C programa:
+// u_Time: Proteklo vreme, za animaciju boja.
+// u_Resolution: Rezolucija prozora (širina i visina).
+// u_Mouse: Trenutna pozicija miša (x i y).
+const char* fragmentShaderSource = "#version 330 core\n"
+    "out vec4 FragColor;\n"
+    "uniform float u_Time;\n"
+    "uniform vec2 u_Resolution;\n"
+    "uniform vec2 u_Mouse;\n"
+    "void main()\n"
+    "{\n"
+    // Normalizujemo koordinate piksela da budu u opsegu [0.0, 1.0]
+    // Ovo čini efekat nezavisnim od veličine prozora.
+    "   vec2 st = gl_FragCoord.xy / u_Resolution.xy;\n"
+    // Normalizujemo i poziciju miša
+    "   vec2 mouse = u_Mouse.xy / u_Resolution.xy;\n"
+    "   float colorValue = 0.0;\n"
+    // Ovo je srce efekta. Kombinujemo više sinusnih talasa
+    // na osnovu pozicije piksela, vremena i pozicije miša
+    // da bismo dobili kompleksan, talasasti obrazac.
+    "   colorValue += sin(st.x * 10.0 + u_Time * 1.5) * 0.5 + 0.5;\n"
+    "   colorValue += sin(st.y * 15.0 + u_Time * 1.0) * 0.5 + 0.5;\n"
+    "   colorValue += sin(distance(st, mouse) * 20.0 + u_Time * 2.0) * 0.5 + 0.5;\n"
+    // Podelimo da bismo normalizovali vrednost
+    "   colorValue /= 3.0;\n"
+    // Sada tu vrednost koristimo da generišemo psihodelične boje.
+    // Koristimo sinusne funkcije sa različitim fazama za R, G, B kanale
+    // da bismo dobili prelivanje duginih boja.
+    "   float r = sin(colorValue * 3.1415) * 0.5 + 0.5;\n"
+    "   float g = sin(colorValue * 3.1415 + 2.094) * 0.5 + 0.5; // Pomereno za 120 stepeni\n"
+    "   float b = sin(colorValue * 3.1415 + 4.188) * 0.5 + 0.5; // Pomereno za 240 stepeni\n"
+    "   FragColor = vec4(r, g, b, 1.0);\n"
+    "}\n\0";
+
+
+int main() {
+    // Inicijalizacija (isto kao pre)
+    glfwInit();
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MAJOR, 3);
+    glfwWindowHint(GLFW_CONTEXT_VERSION_MINOR, 3);
+    glfwWindowHint(GLFW_OPENGL_PROFILE, GLFW_OPENGL_CORE_PROFILE);
+    glfwWindowHint(GLFW_OPENGL_FORWARD_COMPAT, GL_TRUE);
+
+    GLFWwindow* window = glfwCreateWindow(800, 600, "Kompleksni Sejder Efekat", NULL, NULL);
+    if (window == NULL) {
+        printf("Failed to create GLFW window\n");
+        glfwTerminate();
+        return -1;
+    }
+    glfwMakeContextCurrent(window);
+
+    if (!gladLoadGLLoader((GLADloadproc)glfwGetProcAddress)) {
+        printf("Failed to initialize GLAD\n");
+        return -1;
+    }
+
+    // Kompilacija šejdera (isto kao pre)
+    unsigned int vertexShader = glCreateShader(GL_VERTEX_SHADER);
+    glShaderSource(vertexShader, 1, &vertexShaderSource, NULL);
+    glCompileShader(vertexShader);
+
+    unsigned int fragmentShader = glCreateShader(GL_FRAGMENT_SHADER);
+    glShaderSource(fragmentShader, 1, &fragmentShaderSource, NULL);
+    glCompileShader(fragmentShader);
+
+    unsigned int shaderProgram = glCreateProgram();
+    glAttachShader(shaderProgram, vertexShader);
+    glAttachShader(shaderProgram, fragmentShader);
+    glLinkProgram(shaderProgram);
+    glDeleteShader(vertexShader);
+    glDeleteShader(fragmentShader);
+
+    // Geometrija: Jedan veliki kvadrat koji pokriva ceo ekran
+    float vertices[] = {
+        -1.0f, -1.0f,
+         1.0f, -1.0f,
+         1.0f,  1.0f,
+        -1.0f,  1.0f
+    };
+    unsigned int indices[] = { 0, 1, 2, 2, 3, 0 };
+
+    unsigned int VBO, VAO, EBO;
+    glGenVertexArrays(1, &VAO);
+    glGenBuffers(1, &VBO);
+    glGenBuffers(1, &EBO);
+
+    glBindVertexArray(VAO);
+    glBindBuffer(GL_ARRAY_BUFFER, VBO);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+    glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, EBO);
+    glBufferData(GL_ELEMENT_ARRAY_BUFFER, sizeof(indices), indices, GL_STATIC_DRAW);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+    glEnableVertexAttribArray(0);
+
+    // Glavna petlja
+    while (!glfwWindowShouldClose(window)) {
+        if (glfwGetKey(window, GLFW_KEY_ESCAPE) == GLFW_PRESS)
+            glfwSetWindowShouldClose(window, 1);
+
+        // Nema više logike igre, samo crtanje
+        glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT);
+
+        glUseProgram(shaderProgram);
+
+        // --- SLANJE PODATAKA ŠEJDERIMA ---
+        // Ovo je ključni deo koji povezuje C program sa GPU-om u svakom frejmu
+
+        // 1. Pošalji vreme
+        double time = glfwGetTime();
+        int timeLoc = glGetUniformLocation(shaderProgram, "u_Time");
+        glUniform1f(timeLoc, (float)time);
+
+        // 2. Pošalji rezoluciju prozora
+        int width, height;
+        glfwGetFramebufferSize(window, &width, &height);
+        int resolutionLoc = glGetUniformLocation(shaderProgram, "u_Resolution");
+        glUniform2f(resolutionLoc, (float)width, (float)height);
+
+        // 3. Pošalji poziciju miša
+        double mouseX, mouseY;
+        glfwGetCursorPos(window, &mouseX, &mouseY);
+        int mouseLoc = glGetUniformLocation(shaderProgram, "u_Mouse");
+        // Moramo da okrenemo Y osu jer se koordinate miša i OpenGL-a razlikuju
+        glUniform2f(mouseLoc, (float)mouseX, (float)(height - mouseY));
+
+        // Crtanje kvadrata preko celog ekrana
+        glBindVertexArray(VAO);
+        glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
+
+        glfwSwapBuffers(window);
+        glfwPollEvents();
+    }
+
+    // Čišćenje
+    glDeleteVertexArrays(1, &VAO);
+    glDeleteBuffers(1, &VBO);
+    glDeleteBuffers(1, &EBO);
+    glDeleteProgram(shaderProgram);
+
+    glfwDestroyWindow(window);
+    glfwTerminate();
+    return 0;
+}
